@@ -211,6 +211,8 @@ fun FocusableSurface(
                 // while bringIntoView scrolls its parent, which reads as a moving black bar in light
                 // mode. The tonal fill + accent boundary are the compact-row focus signal; reserve
                 // the depth shadow for larger cards that do not exhibit the scrolling trail.
+                // Shadow is a GPU RenderNode layer — skip entirely when animations are off/reduced;
+                // the focus border already signals focus clearly without the glow overhead.
                 if (focused && lit && animationsOn) Modifier.shadow(
                     // The bloom IS the animation here: at reduced level it goes and the rim carries
                     // the focus on its own.
@@ -219,7 +221,10 @@ fun FocusableSurface(
                     clip = false,
                     ambientColor = focusLight,
                     spotColor = focusLight,
-                ) else if (focused && !glassy && !compactFocusableRow) Modifier.shadow(
+                ) else if (focused && !glassy && !compactFocusableRow && animationsOn) Modifier.shadow(
+                    // Skip on !animationsOn: shadow RenderNode is a GPU overdraw layer that adds
+                    // ~1–2 ms per focused card on weak Mali/PowerVR GPUs. The focus border is
+                    // sufficient to identify the focused card when animations are reduced.
                     elevation = (glowElevation * glowScale).dp,
                     shape = shape,
                     clip = false,
@@ -269,18 +274,29 @@ fun FocusableSurface(
             )
             .then(
                 if (focused && useSolidTonalLadder) {
+                    // Capture Composable-scope values before entering the DrawCacheModifier,
+                    // which does not have a Composable context (no @Composable reads allowed inside).
+                    val showRadiance = animationsOn
+                    val isDark = colors.isDark
+                    val primaryColor = colors.primary
+                    val onSurfaceColor = colors.onSurface
                     Modifier.drawWithCache {
                         val highlightHeight = 2.dp.toPx()
+                        // Top-edge specular: cheap single-gradient draw, always on.
                         val highlight = Brush.verticalGradient(
                             colors = listOf(
-                                colors.onSurface.copy(alpha = 0.06f),
+                                onSurfaceColor.copy(alpha = 0.06f),
                                 Color.Transparent,
                             ),
                             endY = highlightHeight,
                         )
-                        val radiance = Brush.radialGradient(
+                        // Radiance: a large radial fill across the whole card surface.
+                        // On weak Mali/PowerVR GPUs each radialGradient drawRect costs
+                        // ~0.5–1 ms of GPU time per focused card. Skip when the user has
+                        // chosen to reduce animations — the highlight alone signals focus.
+                        val radiance = if (showRadiance) Brush.radialGradient(
                             colors = listOf(
-                                colors.primary.copy(alpha = if (colors.isDark) 0.09f else 0.055f),
+                                primaryColor.copy(alpha = if (isDark) 0.09f else 0.055f),
                                 Color.Transparent,
                             ),
                             center = androidx.compose.ui.geometry.Offset(
@@ -288,9 +304,9 @@ fun FocusableSurface(
                                 y = 0f,
                             ),
                             radius = maxOf(size.minDimension * 2.2f, 120.dp.toPx()),
-                        )
+                        ) else null
                         onDrawWithContent {
-                            drawRect(brush = radiance)
+                            if (radiance != null) drawRect(brush = radiance)
                             drawContent()
                             drawRect(
                                 brush = highlight,
