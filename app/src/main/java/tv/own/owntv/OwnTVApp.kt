@@ -167,7 +167,11 @@ class OwnTVApp : Application(), SingletonImageLoader.Factory, androidx.work.Conf
             .build()
         return ImageLoader.Builder(context)
             .components { add(OkHttpNetworkFetcherFactory(callFactory = { imageHttpClient })) }
-            .memoryCache { MemoryCache.Builder().maxSizePercent(context, 0.10).build() }
+            .memoryCache {
+                MemoryCache.Builder()
+                    .maxSizeBytes(imagePosterCacheBytes(context))
+                    .build()
+            }
             // Explicit bounded disk cache: posters/logos survive across sessions instead of
             // re-downloading, capped so a 220k-item catalog can't eat the box's storage.
             .diskCache {
@@ -194,6 +198,35 @@ class OwnTVApp : Application(), SingletonImageLoader.Factory, androidx.work.Conf
     private fun imageDiskCacheBytes(): Long {
         val free = runCatching { cacheDir.usableSpace }.getOrDefault(0L).coerceAtLeast(0L)
         return minOf(MAX_IMAGE_CACHE_BYTES, (free * 0.05).toLong()).coerceAtLeast(MIN_IMAGE_CACHE_BYTES)
+    }
+
+    /**
+     * Adaptive in-memory poster/logo cache sized against the device's total RAM class.
+     *
+     * The previous flat 10% was simultaneously too generous on strong hardware
+     * (image.tmdb.org posters decode to RGB_565 ~100–200 KB each; 10% of 8 GB = 800 MB is
+     * absurd) and too stingy on 1 GB TV boxes (10% = 100 MB — still big enough to starve the
+     * video pipeline). Instead we use three fixed-size tiers that match common TV SoC RAM:
+     *
+     *   ≤ 1.5 GB total RAM → 24 MB  (~150 posters, fits on Amlogic S905 / 512 MB–1 GB devices)
+     *   ≤ 3   GB total RAM → 48 MB  (~350 posters, fits on S905X3 / 2 GB devices)
+     *   > 3   GB total RAM → 80 MB  (~600 posters, Pixel 8a / 4 GB+ phones and boxes)
+     *
+     * The onTrimMemory handler clears the cache under OS memory pressure, so these ceilings
+     * are a worst-case ceiling, not a reservation.
+     */
+    private fun imagePosterCacheBytes(context: Context): Long {
+        val activityManager = context.getSystemService(android.app.ActivityManager::class.java)
+        val memInfo = android.app.ActivityManager.MemoryInfo()
+        val totalMb = runCatching {
+            activityManager?.getMemoryInfo(memInfo)
+            memInfo.totalMem / (1024L * 1024L)
+        }.getOrDefault(0L)
+        return when {
+            totalMb <= 1_500 -> 24L * 1024 * 1024   // weak TV box: 24 MB
+            totalMb <= 3_000 -> 48L * 1024 * 1024   // mid-range:   48 MB
+            else             -> 80L * 1024 * 1024   // high-end:    80 MB
+        }
     }
 
     /**
