@@ -368,9 +368,13 @@ class MainActivity : ComponentActivity() {
                 // Otherwise this stays null and panels fall back to Tier-1 translucency.
                 val needsBackdropAssets = glassActive && bgImagePath.isNotBlank()
                 val supportsFrostPyramid = supportsBackdropBlur()
-                // Low-memory devices (heap < 256 MB) get a 5-level pyramid: visually equivalent at
-                // the blurred frost scale, ~half the bitmap allocation, and ~half the blur CPU work.
-                val frostPyramidLevels = if (supportsFullFrostPyramid()) 10 else 5
+                // Issue #1 reduced Glass.kt's frost pyramid to 5 levels for all devices —
+                // visually indistinguishable at the blurred frost scale while halving bitmap
+                // memory and blur CPU work. Align the backdrop blur here to the same ceiling.
+                // Low-memory devices (<256 MB heap) keep the existing 5-level path; high-memory
+                // devices no longer need 10 since the Glass sampler cannot distinguish the extra
+                // levels at the display sizes in use.
+                val frostPyramidLevels = if (supportsFullFrostPyramid()) 5 else 5
                 val blurred by produceState<BlurredBackdrop?>(
                     initialValue = null,
                     bgImagePath,
@@ -659,11 +663,12 @@ private suspend fun produceBlurredBackdrop(
     }
 
 /** Frost mip pyramid: [levels] real blur levels at geometrically shrinking resolutions.
- *  Low-memory devices pass 5 instead of the default 10 — visual quality at frost scale is
- *  indistinguishable while the bitmap memory budget is roughly halved. */
+ *  Issue #1 established 5 as the quality ceiling: visually indistinguishable from 10 at
+ *  the display sizes in use, ~half the bitmap allocation and ~half the blur CPU work.
+ *  Low-memory devices also pass 5; both paths are now the same value. */
 private fun buildFrostMipPyramid(
     base: Bitmap,
-    levels: Int = 10,
+    levels: Int = 5,
 ): List<androidx.compose.ui.graphics.ImageBitmap> {
     val result = ArrayList<androidx.compose.ui.graphics.ImageBitmap>(levels.coerceAtLeast(1))
     val dimensions = tv.own.owntv.ui.theme.frostMipDimensions(base.width, base.height, levels = levels)
