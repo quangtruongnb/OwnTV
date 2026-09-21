@@ -69,6 +69,9 @@ fun RoundedPanel(
     val glassy = LocalGlass.current.isGlassy(surface)
     val bg = fillColor ?: colors.surfaceContainerLowest
     val outline = colors.outlineVariant.copy(alpha = 0.66f)
+    // Capture at Composable scope — solidPanelMaterial is a plain Modifier and cannot read
+    // Composable properties itself.
+    val showGradients = tv.own.owntv.ui.theme.animationsOn
     Box(
         modifier = modifier
             .clip(shape)
@@ -85,6 +88,7 @@ fun RoundedPanel(
                         edgeColor = colors.outlineVariant,
                         accent = colors.primary,
                         isDark = colors.isDark,
+                        showGradients = showGradients,
                     )
             )
             .padding(innerPadding),
@@ -109,6 +113,9 @@ fun Modifier.roundedPanel(
     val glassy = LocalGlass.current.isGlassy(surface)
     val bg = fillColor ?: colors.surfaceContainerLowest
     val outline = colors.outlineVariant.copy(alpha = 0.66f)
+    // Capture at Composable scope — solidPanelMaterial is a plain Modifier and cannot read
+    // Composable properties itself.
+    val showGradients = tv.own.owntv.ui.theme.animationsOn
     return this
         .clip(shape)
         .glass(
@@ -124,6 +131,7 @@ fun Modifier.roundedPanel(
                     edgeColor = colors.outlineVariant,
                     accent = colors.primary,
                     isDark = colors.isDark,
+                    showGradients = showGradients,
                 )
         )
 }
@@ -132,18 +140,26 @@ fun Modifier.roundedPanel(
  * Cached solid-material lighting: one broad accent reflection, a restrained lower depth tone, and
  * the existing top-edge lift. These are plain brush draws inside the panel clip—no blur, shadow
  * layer, animation, or per-frame brush allocation.
+ *
+ * @param showGradients When false (animations off/reduced), only the cheap 2dp top-edge lift is
+ * drawn. Saves 2 GPU draw calls per panel per frame — significant when 4+ panels are visible.
  */
 private fun Modifier.solidPanelMaterial(
     edgeColor: Color,
     accent: Color,
     isDark: Boolean,
+    showGradients: Boolean = true,
 ): Modifier = drawWithCache {
     val edgeHeight = 2.dp.toPx()
+    // Top-edge specular: always drawn — cheap (2dp strip) and carries the primary depth cue.
     val edge = Brush.verticalGradient(
         colors = listOf(edgeColor.copy(alpha = 0.42f), Color.Transparent),
         endY = edgeHeight,
     )
-    val ambient = Brush.radialGradient(
+    // Ambient + depth: visual flourishes, each an extra GPU drawRect over the full panel area.
+    // On weak Mali/PowerVR GPUs these cost ~0.3–0.5 ms each per panel. Skip when animations
+    // are off/reduced — the top-edge lift alone provides sufficient material depth.
+    val ambient = if (showGradients) Brush.radialGradient(
         colors = listOf(
             accent.copy(alpha = if (isDark) 0.055f else 0.032f),
             Color.Transparent,
@@ -153,18 +169,18 @@ private fun Modifier.solidPanelMaterial(
             y = -minOf(size.height * 0.08f, 20.dp.toPx()),
         ),
         radius = maxOf(size.minDimension * 1.45f, 260.dp.toPx()),
-    )
-    val depth = Brush.verticalGradient(
+    ) else null
+    val depth = if (showGradients) Brush.verticalGradient(
         colors = listOf(
             Color.Transparent,
             Color.Black.copy(alpha = if (isDark) 0.045f else 0.018f),
         ),
         startY = size.height * 0.58f,
         endY = size.height,
-    )
+    ) else null
     onDrawWithContent {
-        drawRect(brush = ambient)
-        drawRect(brush = depth)
+        if (ambient != null) drawRect(brush = ambient)
+        if (depth != null) drawRect(brush = depth)
         drawContent()
         drawRect(brush = edge, size = Size(size.width, edgeHeight))
     }
