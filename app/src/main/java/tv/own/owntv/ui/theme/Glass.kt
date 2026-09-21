@@ -492,12 +492,20 @@ fun Modifier.glass(
 
     // No wallpaper is a deliberate tonal/ceramic material, not fake transparency over a flat colour.
     if (!config.hasBackdrop) {
+        // Without a real backdrop photo there is no light-source to simulate, so the luminous body
+        // (radial glint + sweep) adds GPU work without visible payoff on CARDS. Extend the
+        // lightweight guard: idle cards already skip it; selected cards in no-backdrop mode do too.
+        // Focused/pressed cards keep the full body — the bright lens is the focus signal.
+        val noBackdropCardIdle = surface == GlassSurface.CARDS &&
+            (interaction == GlassInteraction.IDLE || interaction == GlassInteraction.SELECTED)
         return this.drawWithCache {
             val rimMotionScale = if (
                 interaction == GlassInteraction.FOCUSED || interaction == GlassInteraction.PRESSED
             ) motion?.focusedRimScale() ?: 1f else 1f
-            val body = if (lightweightIdle || !treatment.glint) null else createLuminousBody(material = material, interaction = interaction, tonal = true, highlightScale = highlightScale)
-            val rim = if (lightweightIdle) null else createLuminousRim(material = material, treatment = treatment, accent = accent, shape = shape, interaction = interaction, idleAlpha = resolvedIdleRim, highlightScale = highlightScale, focusedMotionScale = rimMotionScale, focusRingMix = focusRingMix, focusRingWidth = focusRingWidth)
+            val body = if (lightweightIdle || noBackdropCardIdle || !treatment.glint) null
+                       else createLuminousBody(material = material, interaction = interaction, tonal = true, highlightScale = highlightScale)
+            val rim = if (lightweightIdle || noBackdropCardIdle) null
+                      else createLuminousRim(material = material, treatment = treatment, accent = accent, shape = shape, interaction = interaction, idleAlpha = resolvedIdleRim, highlightScale = highlightScale, focusedMotionScale = rimMotionScale, focusRingMix = focusRingMix, focusRingWidth = focusRingWidth)
             onDrawWithContent {
                 drawRect(baseFill.copy(alpha = 0.94f))
                 body?.let { drawLuminousBody(it, darkLensMix(null), glintMotionOffset()) }
@@ -879,3 +887,15 @@ fun requiredLegibilityAlpha(
 @ReadOnlyComposable
 fun supportsBackdropBlur(): Boolean =
     android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S
+
+/**
+ * True when the device has enough heap to build the full 10-level frost mip pyramid without
+ * competing with the video pipeline for memory. Low-memory devices (heap < 256 MB — think older
+ * Amlogic S905X boxes or first-gen Fire TV Sticks) get a 5-level pyramid instead: visually
+ * indistinguishable at the blurred frost scale, and ~half the bitmap memory overhead.
+ *
+ * This is a one-time call at composition time (same as [supportsBackdropBlur]) — no runtime
+ * re-evaluation needed since the heap ceiling is fixed for the process lifetime.
+ */
+fun supportsFullFrostPyramid(): Boolean =
+    Runtime.getRuntime().maxMemory() >= 256L * 1024L * 1024L

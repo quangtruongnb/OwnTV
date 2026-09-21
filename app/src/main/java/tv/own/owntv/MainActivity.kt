@@ -62,6 +62,7 @@ import tv.own.owntv.core.theme.UiFontScale
 import tv.own.owntv.core.theme.UiZoom
 import tv.own.owntv.ui.theme.stackBlur
 import tv.own.owntv.ui.theme.supportsBackdropBlur
+import tv.own.owntv.ui.theme.supportsFullFrostPyramid
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
@@ -347,11 +348,15 @@ class MainActivity : ComponentActivity() {
                 // Otherwise this stays null and panels fall back to Tier-1 translucency.
                 val needsBackdropAssets = glassActive && bgImagePath.isNotBlank()
                 val supportsFrostPyramid = supportsBackdropBlur()
+                // Low-memory devices (heap < 256 MB) get a 5-level pyramid: visually equivalent at
+                // the blurred frost scale, ~half the bitmap allocation, and ~half the blur CPU work.
+                val frostPyramidLevels = if (supportsFullFrostPyramid()) 10 else 5
                 val blurred by produceState<BlurredBackdrop?>(
                     initialValue = null,
                     bgImagePath,
                     needsBackdropAssets,
                     supportsFrostPyramid,
+                    frostPyramidLevels,
                     rootSizePx,
                 ) {
                     if (!needsBackdropAssets || rootSizePx.width <= 0f || rootSizePx.height <= 0f) {
@@ -360,7 +365,7 @@ class MainActivity : ComponentActivity() {
                     }
                     // Decode + blur on a background dispatcher; never block the main thread.
                     val path = bgImagePath
-                    value = produceBlurredBackdrop(path, rootSizePx, supportsFrostPyramid)
+                    value = produceBlurredBackdrop(path, rootSizePx, supportsFrostPyramid, frostPyramidLevels)
                 }
                 CompositionLocalProvider(
                     LocalDensity provides Density(
@@ -528,6 +533,7 @@ private suspend fun produceBlurredBackdrop(
     path: String,
     rootSizePx: Size,
     buildFrostPyramid: Boolean,
+    frostPyramidLevels: Int = 10,
 ): BlurredBackdrop? =
     withContext(Dispatchers.Default) {
         runCatching {
@@ -541,8 +547,20 @@ private suspend fun produceBlurredBackdrop(
             // sign-wrap bug, since fixed — the upscale was never the culprit.)
             // Frost is intentionally low-frequency. A 384–448 px base plus geometric smaller mips is
             // visually equivalent once upscaled while staying below the former 512–768 px allocation.
-            val memoryCap = if (Runtime.getRuntime().maxMemory() >= 256L * 1024L * 1024L) 448 else 384
-            val targetW = (rootW / 4f).toInt().coerceIn(384, memoryCap)
+            // Low-memory tier: <128 MB heap devices (first-gen Fire TV, old S905X boxes) get a further
+            // reduced base width — 256 px is still plenty for a blurred frost; the decoder cost drops
+            // proportionally and competes less with the Room cold-start reads on slow eMMC.
+            val maxMem = Runtime.getRuntime().maxMemory()
+            val memoryCap = when {
+                maxMem >= 256L * 1024L * 1024L -> 448   // ≥256 MB heap: full quality
+                maxMem >= 128L * 1024L * 1024L -> 384   // 128–256 MB: same as before
+                else                           -> 256   // <128 MB: reduced base
+            }
+            val memoryFloor = when {
+                maxMem >= 128L * 1024L * 1024L -> 384   // same lower bound as before
+                else                           -> 192   // <128 MB: allow tighter floor
+            }
+            val targetW = (rootW / 4f).toInt().coerceIn(memoryFloor, memoryCap)
             val targetH = (targetW / aspect).toInt().coerceAtLeast(2)
 
             // Decode bounds first, then sample down to roughly the target width.
@@ -601,7 +619,7 @@ private suspend fun produceBlurredBackdrop(
                 src.recycle()
                 val luminance = buildBackdropLuminanceMap(scaled)
                 val levels = if (buildFrostPyramid) {
-                    buildFrostMipPyramid(scaled)
+                    buildFrostMipPyramid(scaled, levels = frostPyramidLevels)
                 } else {
                     scaled.recycle()
                     emptyList()
@@ -620,10 +638,15 @@ private suspend fun produceBlurredBackdrop(
             .getOrNull()
     }
 
-/** Ten real blur levels at geometrically shrinking resolutions within one small memory budget. */
-private fun buildFrostMipPyramid(base: Bitmap): List<androidx.compose.ui.graphics.ImageBitmap> {
-    val result = ArrayList<androidx.compose.ui.graphics.ImageBitmap>(10)
-    val dimensions = tv.own.owntv.ui.theme.frostMipDimensions(base.width, base.height)
+/** Frost mip pyramid: [levels] real blur levels at geometrically shrinking resolutions.
+ *  Low-memory devices pass 5 instead of the default 10 — visual quality at frost scale is
+ *  indistinguishable while the bitmap memory budget is roughly halved. */
+private fun buildFrostMipPyramid(
+    base: Bitmap,
+    levels: Int = 10,
+): List<androidx.compose.ui.graphics.ImageBitmap> {
+    val result = ArrayList<androidx.compose.ui.graphics.ImageBitmap>(levels.coerceAtLeast(1))
+    val dimensions = tv.own.owntv.ui.theme.frostMipDimensions(base.width, base.height, levels = levels)
     var current = stackBlur(base, radius = 4)
     dimensions.forEachIndexed { level, _ ->
         result += current.asImageBitmap()
