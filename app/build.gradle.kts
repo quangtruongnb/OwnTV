@@ -181,6 +181,21 @@ android {
         buildConfig = true
     }
 
+    composeCompiler {
+        // Generate stability / skippability reports for every CI run so regressions are visible.
+        // Output: build/compose_compiler/ — NOT committed; gitignored like other build/ outputs.
+        reportsDestination = layout.buildDirectory.dir("compose_compiler")
+        metricsDestination = layout.buildDirectory.dir("compose_compiler")
+        // External types from :core that the compiler cannot see the source of are declared
+        // stable here. Without this, any composable that receives FontCustomization, WeatherInfo,
+        // SourceEntity or LauncherDeepLink as a parameter is marked non-skippable even though
+        // these are immutable data classes. See app/compose_compiler_stability.conf for the
+        // rationale behind each entry.
+        stabilityConfigurationFiles.add(
+            project.layout.projectDirectory.file("compose_compiler_stability.conf")
+        )
+    }
+
     androidResources {
         // Packages only the catalogue entries marked packaged = true. Strips library locale folders
         // that the app does not officially support: appcompat 1.7.1 alone contributes ~85 locale folders

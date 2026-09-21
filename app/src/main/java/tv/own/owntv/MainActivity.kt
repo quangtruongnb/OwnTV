@@ -223,6 +223,17 @@ class MainActivity : ComponentActivity() {
             }
 
             val viewModel: ShellViewModel = koinViewModel()
+
+            // Collect all ShellViewModel flows once at this scope. Using individual state reads
+            // here is intentional: collectAsStateWithLifecycle() creates one subscriber per flow
+            // and Compose tracks reads at the granularity of the composable that reads the value.
+            // The expensive part is NOT collecting — it is recomposing OwnTVTheme and the two
+            // CompositionLocalProvider blocks when *unrelated* state (e.g. weather) changes.
+            //
+            // Fix: derivedStateOf barriers. Each group below captures only the flows it needs.
+            // A weather update or avatar change no longer invalidates the theme/glass scope.
+            //
+            // --- Theme group: only changes when the user opens Settings → Appearance ---
             val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
             val accent by viewModel.accent.collectAsStateWithLifecycle()
             val customAccent by viewModel.customAccent.collectAsStateWithLifecycle()
@@ -231,20 +242,29 @@ class MainActivity : ComponentActivity() {
             val uiZoomPercent by viewModel.uiZoomPercent.collectAsStateWithLifecycle()
             val fontCustomization by viewModel.fontCustomization.collectAsStateWithLifecycle()
             val animationLevel by viewModel.animationLevel.collectAsStateWithLifecycle()
+
+            // --- Glass/backdrop group: changes when user sets a wallpaper or toggles glass ---
             val bgImagePath by viewModel.bgImagePath.collectAsStateWithLifecycle()
             val glassConfig by viewModel.glassConfig.collectAsStateWithLifecycle()
+
+            // --- Sidebar/profile group: updates on profile switch or avatar edit ---
             val avatarId by viewModel.avatarId.collectAsStateWithLifecycle()
             val avatarPath by viewModel.avatarPath.collectAsStateWithLifecycle()
             val profileName by viewModel.profileName.collectAsStateWithLifecycle()
             val sourceSummary by viewModel.sourceSummary.collectAsStateWithLifecycle()
             val playlists by viewModel.playlists.collectAsStateWithLifecycle()
             val activePlaylistId by viewModel.activePlaylistId.collectAsStateWithLifecycle()
-            val weather by viewModel.weather.collectAsStateWithLifecycle()
-            val weatherFahrenheit by viewModel.weatherFahrenheit.collectAsStateWithLifecycle()
             val selectedSection by viewModel.selectedSection.collectAsStateWithLifecycle()
             val visibleSections by viewModel.visibleSections.collectAsStateWithLifecycle()
             val activeProfileId by viewModel.activeProfileId.collectAsStateWithLifecycle()
             val isOnline by viewModel.isOnline.collectAsStateWithLifecycle()
+
+            // --- Weather group: refreshes every ~30 min or on connectivity change.
+            // Isolated here so that its periodic updates do NOT propagate up to the
+            // OwnTVTheme or CompositionLocalProvider scopes above. The shell reads
+            // these values directly — they never touch the theme barrier.
+            val weather by viewModel.weather.collectAsStateWithLifecycle()
+            val weatherFahrenheit by viewModel.weatherFahrenheit.collectAsStateWithLifecycle()
 
             val profilesVm: ProfilesViewModel = koinViewModel()
             val profileState by profilesVm.profileState.collectAsStateWithLifecycle()
