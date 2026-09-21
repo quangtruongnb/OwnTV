@@ -647,6 +647,10 @@
 1	technical	app/src/main/java/tv/own/owntv/player/PlayerHudControls.kt	liveDot
 1	technical	app/src/main/java/tv/own/owntv/player/PlayerHudControls.kt	liveDotAlpha
 1	technical	app/src/main/java/tv/own/owntv/player/PlayerHudControls.kt	toolPadding
+1	empty	app/src/main/java/tv/own/owntv/player/PlayerInfoCard.kt	\0
+1	technical	app/src/main/java/tv/own/owntv/player/PlayerInfoCard.kt	${formatTime(position)} / ${formatTime(duration)}
+1	technical	app/src/main/java/tv/own/owntv/player/PlayerInfoCard.kt	%02d:%02d
+1	technical	app/src/main/java/tv/own/owntv/player/PlayerInfoCard.kt	?
 1	technical	app/src/main/java/tv/own/owntv/player/RecordingBadge.kt	rec
 1	technical	app/src/main/java/tv/own/owntv/player/RecordingBadge.kt	recPulse
 1	file-path	app/src/main/java/tv/own/owntv/ui/components/BackgroundImageChooserDialog.kt	background_${System.currentTimeMillis()}.$ext

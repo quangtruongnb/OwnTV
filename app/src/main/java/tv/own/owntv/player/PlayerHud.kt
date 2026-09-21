@@ -2,6 +2,11 @@ package tv.own.owntv.player
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
@@ -118,6 +123,10 @@ private const val TRACK_POLL_MS = 300L
 private const val TRACK_POLL_TRIES = 20
 
 internal enum class HudDialog { NONE, AUDIO, SUBS, SPEED, ZOOM, VOLUME, SUB_TIMING, JUMP_BACK }
+
+/** Three-level visibility state for the player HUD, inspired by TiviMate:
+ *  HIDDEN → INFO_CARD (compact bottom bar) → FULL_HUD (existing controls). */
+internal enum class HudLevel { HIDDEN, INFO_CARD, FULL_HUD }
 
 /** What the top-left channel OSD shows for direct tune: the digits being typed, the channel a number
  *  resolved to, or a failure message. All three render as the same card as the channel OSD. */
@@ -252,16 +261,17 @@ fun PlayerHud(
         msToAdvance in 0L..30_000L && !autoNextDismissed
     val nextCountdown = ((msToAdvance + 999L) / 1000L).toInt().coerceIn(0, 30)
 
-    var controlsVisible by remember { mutableStateOf(true) }
+    var hudLevel by remember { mutableStateOf(HudLevel.FULL_HUD) }
+    val controlsVisible = hudLevel == HudLevel.FULL_HUD
     var showInfo by remember { mutableStateOf(false) } // stream technical-info overlay
     // Used only by "Report this stream", which writes the current readout into the playback log (F18).
     val reportContext = androidx.compose.ui.platform.LocalContext.current
     var wakeTick by remember { mutableIntStateOf(0) }
     val forceShow = error != null || dialog != HudDialog.NONE
-    // First Back hides the controls (instead of leaving the channel); with the controls already hidden
-    // this handler is disabled, so Back falls through to the shell, which exits the player. Also disabled
-    // while an error/dialog is up (a dialog handles its own Back; an error should exit).
-    BackHandler(enabled = controlsVisible && !forceShow) { controlsVisible = false }
+    // INFO_CARD: Back hides the card without exiting.
+    BackHandler(enabled = hudLevel == HudLevel.INFO_CARD && !forceShow) { hudLevel = HudLevel.HIDDEN }
+    // FULL_HUD: Back hides the controls (first Back doesn't exit).
+    BackHandler(enabled = controlsVisible && !forceShow) { hudLevel = HudLevel.HIDDEN }
     // Channel zap (live only): a brief "now watching" card on up/down without revealing the full HUD.
     val canZap = onChannelUp != null && onChannelDown != null
     var channelFlash by remember { mutableIntStateOf(0) }
@@ -305,6 +315,8 @@ fun PlayerHud(
 
     val zap: (Int) -> Unit = { d ->
         cancelDirectTune()
+        // Dismiss info card on channel zap — the flash card replaces it.
+        if (hudLevel == HudLevel.INFO_CARD) hudLevel = HudLevel.HIDDEN
         (if (d < 0) onChannelUp else onChannelDown)?.invoke(); channelFlash++
     }
 
@@ -384,16 +396,23 @@ fun PlayerHud(
     // Only for the "report this stream" button, whose readout is now gathered off the main thread.
     val hudScope = androidx.compose.runtime.rememberCoroutineScope()
 
-    LaunchedEffect(forceShow) { if (forceShow) controlsVisible = true }
+    LaunchedEffect(forceShow) { if (forceShow) hudLevel = HudLevel.FULL_HUD }
     LaunchedEffect(controlsVisible, player) { if (controlsVisible) player.refreshStreamChips() }
+    // Also refresh stream chips for INFO_CARD (it shows codec/res/fps badges).
+    LaunchedEffect(hudLevel, player) { if (hudLevel == HudLevel.INFO_CARD) player.refreshStreamChips() }
     DisposableEffect(showInfo, player) {
         if (showInfo) player.refreshStreamChips()
         player.setBitrateTrackingEnabled(showInfo)
         onDispose { player.setBitrateTrackingEnabled(false) }
     }
-    LaunchedEffect(controlsVisible, wakeTick, forceShow, inert) {
+    LaunchedEffect(hudLevel, wakeTick, forceShow, inert) {
         // Don't auto-hide under an overlay — hiding is what triggers the catch-all focus grab below.
-        if (controlsVisible && !forceShow && !inert) { delay(4500); controlsVisible = false }
+        if (forceShow || inert) return@LaunchedEffect
+        when (hudLevel) {
+            HudLevel.INFO_CARD -> { delay(5_000); hudLevel = HudLevel.HIDDEN }
+            HudLevel.FULL_HUD  -> { delay(4_500); hudLevel = HudLevel.HIDDEN }
+            HudLevel.HIDDEN    -> Unit
+        }
     }
     LaunchedEffect(controlsVisible, error, dialog, inert, showNextCard) {
         // Never steal focus while a dialog is open (its rows own it) or while a shell overlay is up
@@ -403,7 +422,9 @@ fun PlayerHud(
         if (showNextCard) { runCatching { nextFocus.requestFocus() }; return@LaunchedEffect }
         if (controlsVisible) {
             if (error != null) runCatching { retryFocus.requestFocus() } else runCatching { playFocus.requestFocus() }
-        } else runCatching { catchFocus.requestFocus() }
+        } else if (hudLevel == HudLevel.HIDDEN || hudLevel == HudLevel.INFO_CARD) {
+            runCatching { catchFocus.requestFocus() }
+        }
     }
 
     // The player sits over opaque video (never a glass surface — see Glass.kt), so its HUD buttons
@@ -413,9 +434,9 @@ fun PlayerHud(
     var shortcutPressedAt by remember { mutableStateOf(0L) }
     val dispatchPlayerShortcut: (RemoteShortcutAction) -> Unit = { action ->
         when (action) {
-            RemoteShortcutAction.OPEN_SUBTITLE_CONTROLS -> { controlsVisible = true; dialog = HudDialog.SUBS }
-            RemoteShortcutAction.OPEN_AUDIO_CONTROLS -> { controlsVisible = true; dialog = HudDialog.AUDIO }
-            RemoteShortcutAction.OPEN_ASPECT_CONTROLS -> { controlsVisible = true; dialog = HudDialog.ZOOM }
+            RemoteShortcutAction.OPEN_SUBTITLE_CONTROLS -> { hudLevel = HudLevel.FULL_HUD; dialog = HudDialog.SUBS }
+            RemoteShortcutAction.OPEN_AUDIO_CONTROLS -> { hudLevel = HudLevel.FULL_HUD; dialog = HudDialog.AUDIO }
+            RemoteShortcutAction.OPEN_ASPECT_CONTROLS -> { hudLevel = HudLevel.FULL_HUD; dialog = HudDialog.ZOOM }
             RemoteShortcutAction.TOGGLE_PLAYBACK_INFO -> showInfo = !showInfo
             else -> remoteShortcuts.dispatch(action)
         }
@@ -522,22 +543,65 @@ fun PlayerHud(
                 // intended: CH-/Down from the first channel lands on the last, and vice versa.
                 canZap && e.key == Key.MediaNext -> { zap(1); true }
                 canZap && e.key == Key.MediaPrevious -> { zap(-1); true }
+                // D-pad Up/Down zap when HUD is HIDDEN or INFO_CARD (not during FULL_HUD where they navigate controls).
                 canZap && isLive && !controlsVisible && e.key == Key.DirectionUp -> { zap(1); true }
                 canZap && isLive && !controlsVisible && e.key == Key.DirectionDown -> { zap(-1); true }
                 // The category list lives at logical Start; history lives at logical End.
                 onOpenChannelList != null && !controlsVisible &&
-                    e.key.horizontalDirection(layoutDirection) == HorizontalDirection.START -> { onOpenChannelList(); true }
+                    e.key.horizontalDirection(layoutDirection) == HorizontalDirection.START -> {
+                    if (hudLevel == HudLevel.INFO_CARD) hudLevel = HudLevel.HIDDEN
+                    onOpenChannelList(); true
+                }
                 onOpenHistoryList != null && !controlsVisible &&
-                    e.key.horizontalDirection(layoutDirection) == HorizontalDirection.END -> { onOpenHistoryList(); true }
+                    e.key.horizontalDirection(layoutDirection) == HorizontalDirection.END -> {
+                    if (hudLevel == HudLevel.INFO_CARD) hudLevel = HudLevel.HIDDEN
+                    onOpenHistoryList(); true
+                }
                 controlsVisible -> { wakeTick++; false }
                 else -> false
             }
         },
     ) {
+        // Catch-all focus target when HUD is not fully visible. Handles:
+        //   HIDDEN: any key (except Back) → show INFO_CARD
+        //   INFO_CARD: OK → show FULL_HUD, other keys → reset auto-hide timer
         if (!controlsVisible && !showNextCard) {
             Box(
                 Modifier.fillMaxSize().focusRequester(catchFocus).focusable()
-                    .onKeyEvent { e -> if (e.type == KeyEventType.KeyDown && e.key != Key.Back) { controlsVisible = true; true } else false },
+                    .onKeyEvent { e ->
+                        if (e.type != KeyEventType.KeyDown || e.key == Key.Back) return@onKeyEvent false
+                        when (hudLevel) {
+                            HudLevel.HIDDEN -> { hudLevel = HudLevel.INFO_CARD; true }
+                            HudLevel.INFO_CARD -> {
+                                if (e.key == Key.DirectionCenter || e.key == Key.Enter || e.key == Key.NumPadEnter) {
+                                    hudLevel = HudLevel.FULL_HUD
+                                } else {
+                                    wakeTick++ // reset auto-hide timer
+                                }
+                                true
+                            }
+                            HudLevel.FULL_HUD -> false // shouldn't reach here
+                        }
+                    },
+            )
+        }
+
+        // --- INFO_CARD: compact channel/EPG bar at the bottom ---
+        AnimatedVisibility(
+            visible = hudLevel == HudLevel.INFO_CARD,
+            enter = slideInVertically(animationSpec = androidx.compose.animation.core.tween(220)) { it } + fadeIn(animationSpec = androidx.compose.animation.core.tween(180)),
+            exit = slideOutVertically(animationSpec = androidx.compose.animation.core.tween(200)) { it } + fadeOut(animationSpec = androidx.compose.animation.core.tween(160)),
+            modifier = Modifier.align(Alignment.BottomStart),
+        ) {
+            PlayerInfoCard(
+                player = player,
+                isLive = isLive,
+                streamChips = streamChips,
+                videoRes = videoRes,
+                engineChip = engineChip,
+                position = position,
+                duration = duration,
+                liveEpgCard = liveEpgCard,
             )
         }
 
