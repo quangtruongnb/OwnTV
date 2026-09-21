@@ -658,7 +658,10 @@ private fun TrendingHeroSection(
             val elapsedMs = (System.nanoTime() - startedAt) / 1_000_000L
             progress = (startProgress + (1f - startProgress) * elapsedMs.toFloat() / duration).coerceIn(0f, 1f)
             if (elapsedMs >= duration) break
-            kotlinx.coroutines.delay(80L)
+            // 250 ms ticks: 4 updates/sec is visually indistinguishable from the previous 80 ms
+            // (12.5/sec) for a 10-second progress bar, but wakes the CPU 3× less often while the
+            // Trending hero section is idle on screen.
+            kotlinx.coroutines.delay(250L)
         }
         progress = 0f
         onNavigate((activeIndex + 1) % items.size)
