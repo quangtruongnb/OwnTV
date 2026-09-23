@@ -1294,16 +1294,30 @@ fun OwnTVShell(
                     .clip(RoundedCornerShape(14.dp)).background(Color.Black)
             },
         ) {
-            // "Promote Preview": a Live channel playing on ExoPlayer renders the ExoPlayer surface — in BOTH
-            // full-screen AND the docked mini-player (same call site = the surface persists across dock/
-            // expand, so playback never blips). Everything else (mpv) renders mpv's surface.
-            if (liveOnExo) {
-                tv.own.owntv.player.ExoPreviewSurface(
-                    engine = liveVm.previewEngine, modifier = Modifier.fillMaxSize(),
-                    keepAwake = true, autoFrameRate = isFull && autoFrameRate,
-                )
-            } else {
-                MpvVideoSurface(player = player, modifier = Modifier.fillMaxSize(), autoFrameRate = isFull && autoFrameRate)
+            // Video surface: full screen during normal playback; docks into top-right 28% preview when the TV guide overlay is active.
+            Box(
+                modifier = if (isFull && showChannelList) {
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = 16.dp, end = 16.dp)
+                        .fillMaxWidth(0.28f)
+                        .aspectRatio(16f / 9f)
+                        .clip(RoundedCornerShape(14.dp))
+                } else {
+                    Modifier.fillMaxSize()
+                },
+            ) {
+                // "Promote Preview": a Live channel playing on ExoPlayer renders the ExoPlayer surface — in BOTH
+                // full-screen AND the docked mini-player (same call site = the surface persists across dock/
+                // expand, so playback never blips). Everything else (mpv) renders mpv's surface.
+                if (liveOnExo) {
+                    tv.own.owntv.player.ExoPreviewSurface(
+                        engine = liveVm.previewEngine, modifier = Modifier.fillMaxSize(),
+                        keepAwake = true, autoFrameRate = isFull && !showChannelList && autoFrameRate,
+                    )
+                } else {
+                    MpvVideoSurface(player = player, modifier = Modifier.fillMaxSize(), autoFrameRate = isFull && !showChannelList && autoFrameRate)
+                }
             }
             // The item has no video track of its own (a radio channel, a music-only "movie"). Playing it is
             // correct — but a black screen with sound reads as a broken player, so name what is happening.
@@ -1314,7 +1328,7 @@ fun OwnTVShell(
                 player.audioOnlyMedia.collectAsStateWithLifecycle()
             }
             if (audioOnlyMedia) {
-                tv.own.owntv.player.AudioOnlyBadge(modifier = Modifier.fillMaxSize(), compact = !isFull)
+                tv.own.owntv.player.AudioOnlyBadge(modifier = Modifier.fillMaxSize(), compact = !isFull || showChannelList)
             }
             // Direct render mode: mpv can't draw subtitles on the decoder-owned surface — the app does.
             // Also drawn docked (F19b): the mini-player is a real watching mode for a subtitled film, and
@@ -1324,7 +1338,7 @@ fun OwnTVShell(
                     player = player, modifier = Modifier.fillMaxSize(),
                     // Tied to the chosen mini size, but nudged up and floored: a strictly proportional
                     // line would be unreadable in the smallest box.
-                    sizeScale = if (isFull) 1f else {
+                    sizeScale = if (isFull && !showChannelList) 1f else {
                         (tv.own.owntv.core.player.MiniPlayerSize.fraction(miniSizePct) * 1.5f).coerceIn(0.35f, 0.7f)
                     },
                 )
@@ -1379,7 +1393,7 @@ fun OwnTVShell(
                     inert = showChannelList || showHistoryList || showCategoryBrowser || showSubtitleSearch || showLocalSubPicker,
                     onChannelUp = zap?.let { z -> { z(-1) } },
                     onChannelDown = zap?.let { z -> { z(1) } },
-                    onOpenChannelList = if (isTunedLive && liveCanZap) { { showChannelList = true } } else null,
+                    onOpenChannelList = if (isTunedLive) { { showChannelList = true } } else null,
                     // Live channels only, and only once Multiview is switched on: the channel on screen
                     // becomes tile 1 and the grid takes over. Everything it needs is already tuned.
                     onMultiview = if (multiviewEnabled && isTunedLive && previewChannel != null) {
@@ -1501,33 +1515,20 @@ fun OwnTVShell(
                 LaunchedEffect(liveVm) {
                     liveVm.catchupUnavailable.collect { localSubToast.show(catchupUnavailable) }
                 }
-                // Left — the playing channel's own provider category.
+                // Left — three-column TV Guide & Channel overlay.
                 if (showChannelList && isLiveChannel) {
-                    if (showCategoryBrowser) {
-                        // Second Left — every Live TV category.
-                        tv.own.owntv.features.shell.components.CategoryBrowserOverlay(
-                            categories = browserCategories,
-                            currentCategoryId = previewChannel?.categoryId,
-                            onSelect = { catId -> liveVm.loadChannelsForCategory(catId) },
-                            onDismiss = { liveVm.hideCategoryBrowser() },
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                    } else if (zapChannels.isNotEmpty()) {
-                        // First Left — the channels of the current category. A browsed-to category may
-                        // hold a single channel, so this renders for any non-empty list.
-                        tv.own.owntv.features.shell.components.ChannelListOverlay(
-                            channels = zapChannels,
-                            currentId = previewChannel?.id,
-                            nowPlaying = overlayNowPlaying,
-                            title = zapOverlayTitle,
-                            showNumbers = directTuneEnabled,
-                            onSelect = { liveVm.ensurePlaying(it); showChannelList = false },
-                            onDismiss = { showChannelList = false },
-                    onOpenCategories = { liveVm.showCategories() },
-                    providerNames = liveProviderNames,
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                    }
+                    tv.own.owntv.features.shell.components.TiviGuideOverlay(
+                        categories = browserCategories,
+                        currentCategoryId = previewChannel?.categoryId,
+                        channels = zapChannels,
+                        currentChannelId = previewChannel?.id,
+                        liveVm = liveVm,
+                        onSelectChannel = { liveVm.ensurePlaying(it); showChannelList = false },
+                        onDismiss = { showChannelList = false },
+                        providerNames = liveProviderNames,
+                        showNumbers = directTuneEnabled,
+                        modifier = Modifier.fillMaxSize(),
+                    )
                 }
                 // Right — recently watched, to hop straight back to the previous channel.
                 if (showHistoryList && isLiveChannel && historyChannels.isNotEmpty()) {

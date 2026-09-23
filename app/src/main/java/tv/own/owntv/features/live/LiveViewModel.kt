@@ -67,6 +67,7 @@ import tv.own.owntv.core.database.dao.resolveExistingProfileId
 import tv.own.owntv.core.database.entity.ChannelEntity
 import tv.own.owntv.core.database.entity.CategoryEntity
 import tv.own.owntv.core.database.entity.ContentOrderEntity
+import tv.own.owntv.core.database.entity.EpgProgrammeEntity
 import tv.own.owntv.core.database.entity.FavoriteEntity
 import tv.own.owntv.core.database.entity.SourceEntity
 import tv.own.owntv.core.database.entity.WatchHistoryEntity
@@ -374,6 +375,7 @@ class LiveViewModel(
      *  [LiveEpgReader]. The shift it applies is passed in at each call, so this view model stays the
      *  single place that knows a customization changed. */
     private val epgReader = LiveEpgReader(epgDao, epgSourceStore, sourceDao, xtreamClient, streamUrlResolver)
+    private val guideReader = tv.own.owntv.core.live.GuideReader(epgDao, epgSourceStore, sourceDao, epgReader)
 
     /** The same candidate set the Guide's picker uses — filtered by no source. */
     private val guideCandidates = tv.own.owntv.core.epg.GuideCandidates(epgDao)
@@ -1064,6 +1066,33 @@ class LiveViewModel(
         val pid = currentProfileId() ?: return emptyList()
         val ctxKey = folderContextKeys.value[categoryId] ?: ""
         return channelDao.snapshotByCategoryManual(categoryId, pid, ctxKey, ZAP_LIST_LIMIT)
+    }
+
+    /** Retrieve channels for a category (or Favorites when categoryId == -1L), applying profile hide customizations. */
+    suspend fun channelsForCategory(categoryId: Long): List<ChannelEntity> = withContext(Dispatchers.IO) {
+        val pid = currentProfileId() ?: return@withContext emptyList()
+        val cust = custom.value
+        val hiddenCats = hiddenCategoryIds.value
+        val raw = if (categoryId == -1L) {
+            channelDao.snapshotFavoritesManual(pid, ContentOrderEntity.FAV_CONTEXT, ctx.value.sourceIds.ifEmpty { listOf(-1L) }, 5000)
+        } else {
+            channelsInCategory(categoryId)
+        }
+        raw.filter { CustomizeKeys.channel(it) !in cust.hiddenItems && (it.categoryId == null || it.categoryId !in hiddenCats) }
+    }
+
+    /** Fetch timeline programmes for a channel over a given time window using GuideReader. */
+    suspend fun guideProgrammesFor(
+        channel: ChannelEntity,
+        windowStart: Long = System.currentTimeMillis() - 2 * 3600_000L,
+        windowEnd: Long = System.currentTimeMillis() + 6 * 3600_000L,
+    ): List<EpgProgrammeEntity> = withContext(Dispatchers.IO) {
+        guideReader.row(channel, custom.value, epgOffset.value, windowStart, windowEnd)
+    }
+
+    /** Retrieve current and next programme of a channel. */
+    suspend fun nowNextFor(channel: ChannelEntity): EpgNowNext? = withContext(Dispatchers.IO) {
+        epgReader.nowNext(channel, custom.value, epgOffset.value)
     }
 
     /** [channel]'s own provider category, with the same hide/rename treatment the browsing lists get,
