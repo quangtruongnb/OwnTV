@@ -718,6 +718,8 @@ fun OwnTVShell(
     BackHandler {
         when {
             playerMode == PlayerMode.FULLSCREEN -> exitPlayer()
+            showChannelList -> showChannelList = false
+            showHistoryList -> showHistoryList = false
             showAvatarPicker -> showAvatarPicker = false
             showPlaylistPicker -> showPlaylistPicker = false
             showExit -> showExit = false

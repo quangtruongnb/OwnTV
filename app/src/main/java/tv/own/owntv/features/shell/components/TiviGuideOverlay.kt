@@ -67,13 +67,14 @@ import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
 import coil3.compose.AsyncImagePainter
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import tv.own.owntv.R
 import tv.own.owntv.core.database.entity.CategoryEntity
 import tv.own.owntv.core.database.entity.ChannelEntity
 import tv.own.owntv.core.database.entity.EpgProgrammeEntity
 import tv.own.owntv.core.epg.displayLogoUrl
-import tv.own.owntv.core.live.EpgNowNext
 import tv.own.owntv.core.theme.GlassSurface
 import tv.own.owntv.features.epg.GuideGridDefaults
 import tv.own.owntv.features.epg.ProgrammeStripCanvas
@@ -125,8 +126,11 @@ fun TiviGuideOverlay(
             liveNow = System.currentTimeMillis()
         }
     }
-    val windowStart = remember(liveNow) { liveNow - 2 * 3600_000L }
-    val windowEnd = remember(liveNow) { liveNow + 6 * 3600_000L }
+    // Keep the query window fixed for this overlay session. `liveNow` ticks for the marker and
+    // progress display; tying the window to it caused every visible row to become a new DB query
+    // every 30 seconds.
+    val windowStart = remember { System.currentTimeMillis() - 2 * 3600_000L }
+    val windowEnd = remember { System.currentTimeMillis() + 6 * 3600_000L }
 
     // Categories list: add Favorites as the top entry if user has favorites
     val favoriteIds by liveVm.favoriteIds.collectAsStateWithLifecycle()
@@ -166,8 +170,27 @@ fun TiviGuideOverlay(
         mutableStateOf(channels.firstOrNull { it.id == currentChannelId } ?: channels.firstOrNull())
     }
 
-    // Programme caching for visible rows
+    // Programme cache shared by the focused details card and timeline rows.
     val rowProgrammes = remember { mutableStateMapOf<Long, List<EpgProgrammeEntity>>() }
+    val programmeLoads = remember { mutableMapOf<Long, Deferred<List<EpgProgrammeEntity>>>() }
+
+    suspend fun programmesFor(channel: ChannelEntity): List<EpgProgrammeEntity> {
+        rowProgrammes[channel.id]?.let { return it }
+        val load = synchronized(programmeLoads) {
+            programmeLoads[channel.id] ?: scope.async {
+                liveVm.guideProgrammesFor(channel, windowStart, windowEnd)
+            }.also { programmeLoads[channel.id] = it }
+        }
+        return try {
+            load.await().also { rowProgrammes[channel.id] = it }
+        } finally {
+            if (load.isCompleted) {
+                synchronized(programmeLoads) {
+                    if (programmeLoads[channel.id] === load) programmeLoads.remove(channel.id)
+                }
+            }
+        }
+    }
 
     // Shared timeline horizontal scroll
     val hScroll = rememberScrollState()
@@ -262,11 +285,13 @@ fun TiviGuideOverlay(
                         .padding(16.dp),
                 ) {
                     val ch = focusedChannel
-                    val nowNext by produceState<EpgNowNext?>(null, ch?.id) {
-                        value = ch?.let { liveVm.nowNextFor(it) }
+                    val focusedProgrammes by produceState<List<EpgProgrammeEntity>>(emptyList(), ch?.id, windowStart, windowEnd) {
+                        value = ch?.let { programmesFor(it) }.orEmpty()
                     }
-                    val currentProg = nowNext?.now
-                    val nextProg = nowNext?.next
+                    // Read from the same time-window query used by the timeline rows. Some
+                    // providers return timeline data while the narrower now/next lookup is empty.
+                    val currentProg = focusedProgrammes.firstOrNull { it.startMs <= liveNow && it.stopMs > liveNow }
+                    val nextProg = focusedProgrammes.firstOrNull { it.startMs > liveNow }
 
                     Column(
                         modifier = Modifier.fillMaxSize(),
@@ -616,11 +641,7 @@ fun TiviGuideOverlay(
                                 channel.id,
                                 windowStart,
                             ) {
-                                if (rowProgrammes[channel.id] == null) {
-                                    val progs = liveVm.guideProgrammesFor(channel, windowStart, windowEnd)
-                                    rowProgrammes[channel.id] = progs
-                                    value = progs
-                                }
+                                value = programmesFor(channel)
                             }
 
                             Row(
