@@ -1087,16 +1087,7 @@ class LiveViewModel(
         windowStart: Long = System.currentTimeMillis() - 2 * 3600_000L,
         windowEnd: Long = System.currentTimeMillis() + 6 * 3600_000L,
     ): List<EpgProgrammeEntity> = withContext(Dispatchers.IO) {
-        val shift = epgOffset.value
-        val row = guideReader.row(channel, custom.value, shift, windowStart, windowEnd)
-        if (row.isNotEmpty()) return@withContext row
-
-        // The focused-channel lookup can resolve provider EPG data even when the indexed timeline
-        // query has no cached rows yet. Keep those now/next programmes visible in the guide strip.
-        epgReader.nowNext(channel, custom.value, shift)
-            ?.let { listOfNotNull(it.now, it.next) }
-            .orEmpty()
-            .filter { it.stopMs > windowStart && it.startMs < windowEnd }
+        guideReader.row(channel, custom.value, epgOffset.value, windowStart, windowEnd)
     }
 
     /** Retrieve current and next programme of a channel. */
