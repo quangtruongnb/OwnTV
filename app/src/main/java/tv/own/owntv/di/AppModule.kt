@@ -1,6 +1,10 @@
 package tv.own.owntv.di
 
 import tv.own.owntv.features.sports.SportsPlayback
+import tv.own.owntv.features.sports.tvhome.SportsChannelPlanner
+import tv.own.owntv.features.sports.tvhome.SportsChannelPublisher
+import tv.own.owntv.features.sports.tvhome.SportsChannelSync
+import tv.own.owntv.features.sports.tvhome.SportsPosterRenderer
 import tv.own.owntv.features.sports.SportsSettingsViewModel
 import tv.own.owntv.features.sports.SportsViewModel
 import org.koin.core.module.dsl.viewModel
@@ -61,6 +65,11 @@ val appModule = module {
     singleOf(::HomeFeedReader)
     // Sports Hub: which match the playing channel came from. Lazy; nothing runs until it is asked.
     singleOf(::SportsPlayback)
+    // Android TV home screen "Sports" channel (followed matches, live and next 7 days).
+    singleOf(::SportsChannelPlanner)
+    singleOf(::SportsPosterRenderer)
+    singleOf(::SportsChannelPublisher)
+    singleOf(::SportsChannelSync)
     // Process-long scope for work that must outlive the screen that started it (a first-run restore).
     single<kotlinx.coroutines.CoroutineScope> {
         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default)

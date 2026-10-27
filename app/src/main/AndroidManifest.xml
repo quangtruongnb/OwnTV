@@ -61,6 +61,12 @@
                 android:resource="@xml/file_paths" />
         </provider>
 
+        <!-- Sports home screen channel posters, read by the launcher (read-only, plain PNG names only). -->
+        <provider
+            android:name=".features.sports.tvhome.SportsPosterProvider"
+            android:authorities="${applicationId}.sportsposter"
+            android:exported="true" />
+
         <!-- Disable WorkManager default auto-init; OwnTVApp provides Configuration. -->
         <provider
             android:name="androidx.startup.InitializationProvider"

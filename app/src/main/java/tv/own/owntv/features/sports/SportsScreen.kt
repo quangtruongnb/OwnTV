@@ -44,12 +44,18 @@ fun SportsScreen(
     val open: (Match?) -> Unit = { m -> if (m != null) lastKey = m.key; match = m; vm.open(m) }
     val playback = koinInject<SportsPlayback>()
     LaunchedEffect(Unit) {
-        playback.pendingMatch.value?.let { (m, ch) ->
+        if (playback.pendingMatch.value == null) {
+            playback.returnToMatch?.let { m ->
+                playback.returnToMatch = null
+                open(m)
+            }
+        }
+        // Kept collecting: a request can also arrive while this screen is already shown (a home screen card).
+        playback.pendingMatch.collect { req ->
+            val (m, ch) = req ?: return@collect
             playback.pendingMatch.value = null
+            openLeague(null)
             returnTo = ch
-            open(m)
-        } ?: playback.returnToMatch?.let { m ->
-            playback.returnToMatch = null
             open(m)
         }
     }

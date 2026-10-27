@@ -132,6 +132,8 @@ fun OwnTVShell(
     activeProfileId: Long?,
     pendingDeepLink: LauncherDeepLink?,
     onDeepLinkConsumed: () -> Unit,
+    pendingSportsLink: tv.own.owntv.features.sports.tvhome.SportsMatchLink? = null,
+    onSportsLinkConsumed: () -> Unit = {},
     isOffline: Boolean = false,
     onExitApp: () -> Unit,
     onSwitchProfile: () -> Unit,
@@ -784,6 +786,18 @@ fun OwnTVShell(
         tv.own.owntv.core.util.Perf.stamp("shell-composed")
         withFrameNanos { }
         focusRail()
+    }
+
+    // A card from the Android TV home screen's "Sports" channel: its match page (the channel itself: the hub).
+    val sportsChannelSync = koinInject<tv.own.owntv.features.sports.tvhome.SportsChannelSync>()
+    LaunchedEffect(pendingSportsLink, activeProfileId) {
+        val link = pendingSportsLink ?: return@LaunchedEffect
+        val pid = activeProfileId ?: return@LaunchedEffect
+        if (pid < 0) return@LaunchedEffect
+        val match = if (link.opensMatch) runCatching { sportsChannelSync.resolve(link) }.getOrNull() else null
+        if (match != null) sportsMatchRequests.pendingMatch.value = match to null
+        onSelectSection(MainSection.SPORTS)
+        onSportsLinkConsumed()
     }
 
     LaunchedEffect(pendingDeepLink, activeProfileId) {

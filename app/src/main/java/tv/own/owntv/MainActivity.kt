@@ -9,7 +9,9 @@ import android.util.Log
 import androidx.room.useWriterConnection
 import android.view.WindowManager
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import androidx.lifecycle.lifecycleScope
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -75,6 +77,9 @@ open class MainActivity : ComponentActivity() {
          * strictly less work than before.
          */
         private const val SPLASH_TIMEOUT_MS = 2_000L
+
+        /** After the app comes to front: past the first screen and the Sports channel's first publish. */
+        private const val SPORTS_BROWSABLE_DELAY_MS = 25_000L
     }
 
     /**
@@ -96,6 +101,35 @@ open class MainActivity : ComponentActivity() {
     // The sole locale authority (SharedPreferences-backed; see docs/internationalization.md 0b).
     private val localeStore: tv.own.owntv.core.i18n.LocaleStore by inject()
     private var pendingDeepLink by mutableStateOf<LauncherDeepLink?>(null)
+    // A card (or the channel itself) from the home screen's "Sports" channel.
+    private var pendingSportsLink by mutableStateOf<tv.own.owntv.features.sports.tvhome.SportsMatchLink?>(null)
+    private val sportsChannel: tv.own.owntv.features.sports.tvhome.SportsChannelPublisher by inject()
+    private var sportsBrowsableJob: kotlinx.coroutines.Job? = null
+    private val sportsBrowsableRequest = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult(),
+    ) { r -> Log.d(TAG, "sports channel browsable result=${r.resultCode}") }
+
+    private fun parseDeepLinks(intent: Intent?) {
+        val sports = tv.own.owntv.features.sports.tvhome.SportsMatchLink.parse(intent?.data)
+        pendingSportsLink = sports
+        pendingDeepLink = if (sports != null) null else LauncherDeepLink.parse(intent?.data)
+    }
+
+    /** The home screen's "Sports" channel, if the system has not shown it: ask the user once, while in front. */
+    private fun askSportsChannelBrowsable() {
+        sportsBrowsableJob?.cancel()
+        sportsBrowsableJob = lifecycleScope.launch {
+            kotlinx.coroutines.delay(SPORTS_BROWSABLE_DELAY_MS)
+            val id = withContext(Dispatchers.IO) { sportsChannel.channelAwaitingBrowsable() } ?: return@launch
+            sportsChannel.markBrowsableAsked()
+            runCatching {
+                sportsBrowsableRequest.launch(
+                    Intent(androidx.tvprovider.media.tv.TvContractCompat.ACTION_REQUEST_CHANNEL_BROWSABLE)
+                        .putExtra(androidx.tvprovider.media.tv.TvContractCompat.EXTRA_CHANNEL_ID, id),
+                )
+            }.onFailure { Log.w(TAG, "sports channel browsable request failed: ${it.message}") }
+        }
+    }
 
     /**
      * Wrap the Activity base with the selected locale so its own `Resources` resolve correctly —
@@ -111,7 +145,7 @@ open class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        pendingDeepLink = LauncherDeepLink.parse(intent.data)
+        parseDeepLinks(intent)
         Log.d(TAG, "onNewIntent deepLinkHost=${intent.data?.host} deepLinkType=${pendingDeepLink?.javaClass?.simpleName ?: "none"}")
     }
 
@@ -121,6 +155,7 @@ open class MainActivity : ComponentActivity() {
         // cache + decoder buffers — holding them while invisible got the process LMK-killed on real TVs.
         // Every engine: mpv, the Live engine (its audio must stop too), each Multiview tile and the hero.
         if (!isChangingConfigurations) engines.onAppBackgrounded()
+        sportsBrowsableJob?.cancel()
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     }
 
@@ -133,6 +168,7 @@ open class MainActivity : ComponentActivity() {
         // Staleness-based auto refresh on resume (interval modes only — STARTUP is cold-start only). The
         // ViewModel throttles this internally so a quick toggle doesn't re-run the check.
         shellViewModel.checkAutoRefresh(includeStartup = false)
+        askSportsChannelBrowsable()
     }
 
     /**
@@ -170,7 +206,7 @@ open class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         val splashDeadline = SystemClock.uptimeMillis() + SPLASH_TIMEOUT_MS
         splash.setKeepOnScreenCondition { !contentReady && SystemClock.uptimeMillis() < splashDeadline }
-        pendingDeepLink = LauncherDeepLink.parse(intent.data)
+        parseDeepLinks(intent)
         Log.d(TAG, "onCreate deepLinkHost=${intent.data?.host} deepLinkType=${pendingDeepLink?.javaClass?.simpleName ?: "none"}")
         val dbError = probeDatabase()
         if (dbError != null) {
@@ -433,6 +469,8 @@ open class MainActivity : ComponentActivity() {
                                 activeProfileId = activeProfileId,
                                 pendingDeepLink = pendingDeepLink,
                                 onDeepLinkConsumed = { pendingDeepLink = null },
+                                pendingSportsLink = pendingSportsLink,
+                                onSportsLinkConsumed = { pendingSportsLink = null },
                                 isOffline = !isOnline,
                                 onExitApp = { finish() },
                                 onSwitchProfile = {

@@ -35,6 +35,8 @@
 1	log	app/src/main/java/tv/own/owntv/MainActivity.kt	onNewIntent deepLinkHost=${intent.data?.host} deepLinkType=${pendingDeepLink?.javaClass?.simpleName ?: "none"}
 1	performance	app/src/main/java/tv/own/owntv/MainActivity.kt	profile-id-loaded
 1	performance	app/src/main/java/tv/own/owntv/MainActivity.kt	profiles-loaded
+1	log	app/src/main/java/tv/own/owntv/MainActivity.kt	sports channel browsable request failed: ${it.message}
+1	log	app/src/main/java/tv/own/owntv/MainActivity.kt	sports channel browsable result=${r.resultCode}
 1	compiler	app/src/main/java/tv/own/owntv/OwnTVApp.kt	DEPRECATION
 1	technical	app/src/main/java/tv/own/owntv/OwnTVApp.kt	ahXN00/OwnTV
 1	file-path	app/src/main/java/tv/own/owntv/OwnTVApp.kt	image_cache
@@ -840,6 +842,46 @@
 1	technical	app/src/main/java/tv/own/owntv/features/sports/SportsSettingsScreen.kt	cricket/all
 1	technical	app/src/main/java/tv/own/owntv/features/sports/SportsTable.kt	#
 1	technical	app/src/main/java/tv/own/owntv/features/sports/SportsViewModel.kt	$startMs|$title
+1	log	app/src/main/java/tv/own/owntv/features/sports/tvhome/SportsChannelPlanner.kt	SportsChannel
+1	log	app/src/main/java/tv/own/owntv/features/sports/tvhome/SportsChannelPlanner.kt	scoreboard ${league.key} $date failed: ${e.javaClass.simpleName}
+2	technical	app/src/main/java/tv/own/owntv/features/sports/tvhome/SportsChannelPublisher.kt	$h $VS $a
+1	technical	app/src/main/java/tv/own/owntv/features/sports/tvhome/SportsChannelPublisher.kt	$h $score $a
+1	technical	app/src/main/java/tv/own/owntv/features/sports/tvhome/SportsChannelPublisher.kt	$hs - $aws
+1	compiler	app/src/main/java/tv/own/owntv/features/sports/tvhome/SportsChannelPublisher.kt	RestrictedApi
+1	log	app/src/main/java/tv/own/owntv/features/sports/tvhome/SportsChannelPublisher.kt	SportsChannel
+1	preference-key	app/src/main/java/tv/own/owntv/features/sports/tvhome/SportsChannelPublisher.kt	ask_browsable
+1	log	app/src/main/java/tv/own/owntv/features/sports/tvhome/SportsChannelPublisher.kt	channel created id=$id
+1	preference-key	app/src/main/java/tv/own/owntv/features/sports/tvhome/SportsChannelPublisher.kt	channel_id
+1	protocol	app/src/main/java/tv/own/owntv/features/sports/tvhome/SportsChannelPublisher.kt	owntv-sports
+1	url	app/src/main/java/tv/own/owntv/features/sports/tvhome/SportsChannelPublisher.kt	owntv://open/sports
+1	log	app/src/main/java/tv/own/owntv/features/sports/tvhome/SportsChannelPublisher.kt	publish failed: ${e.javaClass.simpleName}: ${e.message}
+1	log	app/src/main/java/tv/own/owntv/features/sports/tvhome/SportsChannelPublisher.kt	published ${matches.size} cards (removed ${existing.keys.count { it !in wanted }})
+1	preference-key	app/src/main/java/tv/own/owntv/features/sports/tvhome/SportsChannelPublisher.kt	sports_tv_channel
+1	technical	app/src/main/java/tv/own/owntv/features/sports/tvhome/SportsChannelPublisher.kt	vs
+1	technical	app/src/main/java/tv/own/owntv/features/sports/tvhome/SportsChannelPublisher.kt	·
+2	log	app/src/main/java/tv/own/owntv/features/sports/tvhome/SportsChannelSync.kt	SportsChannel
+1	log	app/src/main/java/tv/own/owntv/features/sports/tvhome/SportsChannelSync.kt	refresh failed: ${it.message}
+1	protocol	app/src/main/java/tv/own/owntv/features/sports/tvhome/SportsChannelSync.kt	sports-tv-home-channel
+1	log	app/src/main/java/tv/own/owntv/features/sports/tvhome/SportsChannelSync.kt	worker run failed: ${it.message}
+1	uri	app/src/main/java/tv/own/owntv/features/sports/tvhome/SportsMatchLink.kt	id
+1	uri	app/src/main/java/tv/own/owntv/features/sports/tvhome/SportsMatchLink.kt	key
+1	uri	app/src/main/java/tv/own/owntv/features/sports/tvhome/SportsMatchLink.kt	league
+1	uri	app/src/main/java/tv/own/owntv/features/sports/tvhome/SportsMatchLink.kt	open
+1	uri	app/src/main/java/tv/own/owntv/features/sports/tvhome/SportsMatchLink.kt	owntv
+1	uri	app/src/main/java/tv/own/owntv/features/sports/tvhome/SportsMatchLink.kt	sports
+1	uri	app/src/main/java/tv/own/owntv/features/sports/tvhome/SportsMatchLink.kt	start
+1	uri	app/src/main/java/tv/own/owntv/features/sports/tvhome/SportsPosterProvider.kt	.sportsposter
+1	regex	app/src/main/java/tv/own/owntv/features/sports/tvhome/SportsPosterProvider.kt	[0-9a-f]+_[0-9a-f-]+\\.png
+1	mime	app/src/main/java/tv/own/owntv/features/sports/tvhome/SportsPosterProvider.kt	image/png
+1	protocol	app/src/main/java/tv/own/owntv/features/sports/tvhome/SportsPosterProvider.kt	r
+1	file-path	app/src/main/java/tv/own/owntv/features/sports/tvhome/SportsPosterProvider.kt	sports_posters
+1	empty	app/src/main/java/tv/own/owntv/features/sports/tvhome/SportsPosterRenderer.kt	\0
+1	file-path	app/src/main/java/tv/own/owntv/features/sports/tvhome/SportsPosterRenderer.kt	${hash(m.key)}_${java.lang.Long.toHexString(signature)}.png
+1	technical	app/src/main/java/tv/own/owntv/features/sports/tvhome/SportsPosterRenderer.kt	%02x
+1	protocol	app/src/main/java/tv/own/owntv/features/sports/tvhome/SportsPosterRenderer.kt	SHA-256
+1	log	app/src/main/java/tv/own/owntv/features/sports/tvhome/SportsPosterRenderer.kt	SportsChannel
+1	log	app/src/main/java/tv/own/owntv/features/sports/tvhome/SportsPosterRenderer.kt	poster failed for ${m.key}: ${e.javaClass.simpleName}
+1	file-path	app/src/main/java/tv/own/owntv/features/sports/tvhome/SportsPosterRenderer.kt	sports_logos
 1	json	app/src/main/java/tv/own/owntv/features/subtitles/SubtitleSearchViewModel.kt	ai_translated
 1	json	app/src/main/java/tv/own/owntv/features/subtitles/SubtitleSearchViewModel.kt	attributes
 1	json	app/src/main/java/tv/own/owntv/features/subtitles/SubtitleSearchViewModel.kt	data

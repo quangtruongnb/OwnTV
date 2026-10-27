@@ -141,6 +141,11 @@ class OwnTVApp : Application(), SingletonImageLoader.Factory, androidx.work.Conf
             kotlinx.coroutines.delay(SPORTS_START_DELAY_MS)
             runCatching { GlobalContext.get().get<tv.own.owntv.core.sports.SportsRepository>().appStarted() }
         }
+        // Android TV home screen "Sports" channel: a refresh now, then every 15 min while Android TV Home is on.
+        appScope.launch {
+            kotlinx.coroutines.delay(SPORTS_START_DELAY_MS)
+            runCatching { GlobalContext.get().get<tv.own.owntv.features.sports.tvhome.SportsChannelSync>().start(appScope) }
+        }
         // NOTE: cold start does ZERO heavy DB work. Index + ANALYZE maintenance is piggy-backed onto the
         // operation that actually changes the data — ImportFinalizer.finalize() for normal re-syncs, the
         // deferred content-index worker after a fresh import, the EpgRepository refresh after every EPG
