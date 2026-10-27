@@ -14,6 +14,7 @@ import android.text.TextUtils
 import android.util.Log
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import android.text.format.DateUtils
 import tv.own.owntv.core.sports.model.Competitor
 import tv.own.owntv.core.sports.model.Match
 import java.io.File
@@ -61,35 +62,82 @@ class SportsPosterRenderer(
         // Transparent background: the launcher's own card shows through. Text carries a shadow so it
         // reads on any wallpaper. Everything sits inside the band launchers keep when they crop to ~2:1.
 
-        // League, top centre (with a red dot while live).
-        val small = fit(m.leagueName, 30f, 22f, W - 120f, MUTED)
+        // League header across top centre (with red LIVE indicator dot).
+        val small = fit(m.leagueName, 26f, 20f, W - 120f, MUTED)
         val league = TextUtils.ellipsize(m.leagueName, small, W - 120f, TextUtils.TruncateAt.END).toString()
         val leagueW = small.measureText(league)
         val leagueX = (W - leagueW) / 2f
-        c.drawText(league, leagueX, 62f, small)
+        c.drawText(league, leagueX, 48f, small)
         if (m.isLive) {
             p.color = LIVE
-            c.drawCircle(leagueX - 18f, 52f, 9f, p)
+            c.drawCircle(leagueX - 22f, 38f, 7f, p)
         }
 
-        // Crests.
         val home = m.home ?: m.competitors.firstOrNull()
         val away = m.away ?: m.competitors.getOrNull(1)
-        crest(c, home, W * 0.2f, 145f)
-        crest(c, away, W * 0.8f, 145f)
 
-        // Centre: "vs" or the score.
-        val mid = text(if (centre.length > 3) 68f else 60f, Typeface.BOLD, Color.WHITE)
-        c.drawText(centre, (W - mid.measureText(centre)) / 2f, 166f, mid)
+        if (home != null && away != null) {
+            // Two-team match: enlarged side crests (~185px) with team names below each logo.
+            val homeX = W * 0.19f
+            val awayX = W * 0.81f
+            val crestY = 152f
 
-        // Title and kick-off.
-        val big = fit(title, 50f, 34f, W - 24f, Color.WHITE)
-        val t = TextUtils.ellipsize(title, big, W - 24f, TextUtils.TruncateAt.END).toString()
-        c.drawText(t, (W - big.measureText(t)) / 2f, 268f, big)
-        val foot = fit(footer, 40f, 30f, W - 24f, if (m.isLive) LIVE else ACCENT)
-        val f = TextUtils.ellipsize(footer, foot, W - 24f, TextUtils.TruncateAt.END).toString()
-        c.drawText(f, (W - foot.measureText(f)) / 2f, 318f, foot)
+            crest(c, home, homeX, crestY, CREST_SIZE)
+            crest(c, away, awayX, crestY, CREST_SIZE)
+
+            // Team names directly below crests
+            val homeName = home.team.shortName.ifBlank { home.team.name }
+            val awayName = away.team.shortName.ifBlank { away.team.name }
+            drawTeamName(c, homeName, homeX, 285f)
+            drawTeamName(c, awayName, awayX, 285f)
+
+            // Centre column:
+            if (m.isLive) {
+                // Large live score in centre
+                val mid = fit(centre, 62f, 44f, 200f, Color.WHITE)
+                c.drawText(centre, (W - mid.measureText(centre)) / 2f, 166f, mid)
+                // Match status below score
+                val foot = fit(footer, 36f, 24f, 200f, LIVE)
+                c.drawText(footer, (W - foot.measureText(footer)) / 2f, 235f, foot)
+            } else {
+                // "vs" in centre
+                val mid = text(58f, Typeface.BOLD, Color.WHITE)
+                c.drawText(centre, (W - mid.measureText(centre)) / 2f, 155f, mid)
+                // Kick-off time and date stacked
+                if (m.startMs > 0L) {
+                    val timeStr = DateUtils.formatDateTime(context, m.startMs, DateUtils.FORMAT_SHOW_TIME)
+                    val dateStr = DateUtils.formatDateTime(
+                        context, m.startMs,
+                        DateUtils.FORMAT_SHOW_WEEKDAY or DateUtils.FORMAT_ABBREV_WEEKDAY or
+                            DateUtils.FORMAT_SHOW_DATE or DateUtils.FORMAT_ABBREV_MONTH or DateUtils.FORMAT_NO_YEAR,
+                    )
+                    val timePaint = fit(timeStr, 36f, 26f, 200f, ACCENT)
+                    c.drawText(timeStr, (W - timePaint.measureText(timeStr)) / 2f, 215f, timePaint)
+                    val datePaint = fit(dateStr, 24f, 18f, 200f, MUTED)
+                    c.drawText(dateStr, (W - datePaint.measureText(dateStr)) / 2f, 255f, datePaint)
+                } else if (footer.isNotBlank()) {
+                    val foot = fit(footer, 32f, 22f, 200f, ACCENT)
+                    c.drawText(footer, (W - foot.measureText(footer)) / 2f, 225f, foot)
+                }
+            }
+        } else {
+            // Single competitor or field event: centered crest + full title below.
+            crest(c, home, W / 2f, 150f, CREST_SIZE)
+            val big = fit(title, 46f, 30f, W - 48f, Color.WHITE)
+            val t = TextUtils.ellipsize(title, big, W - 48f, TextUtils.TruncateAt.END).toString()
+            c.drawText(t, (W - big.measureText(t)) / 2f, 270f, big)
+            val foot = fit(footer, 34f, 24f, W - 48f, if (m.isLive) LIVE else ACCENT)
+            val f = TextUtils.ellipsize(footer, foot, W - 48f, TextUtils.TruncateAt.END).toString()
+            c.drawText(f, (W - foot.measureText(f)) / 2f, 315f, foot)
+        }
         return bmp
+    }
+
+    private fun drawTeamName(c: Canvas, name: String, cx: Float, y: Float) {
+        if (name.isBlank()) return
+        val paint = fit(name, 34f, 22f, MAX_TEAM_NAME_W, Color.WHITE)
+        val text = TextUtils.ellipsize(name, paint, MAX_TEAM_NAME_W, TextUtils.TruncateAt.END).toString()
+        c.drawText(text, cx - paint.measureText(text) / 2f, y, paint)
     }
 
     /** A bold paint at [max] size, shrunk (not below [min]) until [s] fits [width]. */
@@ -99,8 +147,7 @@ class SportsPosterRenderer(
         return paint
     }
 
-    private fun crest(c: Canvas, who: Competitor?, cx: Float, cy: Float) {
-        val size = 120f
+    private fun crest(c: Canvas, who: Competitor?, cx: Float, cy: Float, size: Float = CREST_SIZE) {
         val box = RectF(cx - size / 2, cy - size / 2, cx + size / 2, cy + size / 2)
         val logo = who?.team?.logoUrl?.takeIf { it.isNotBlank() }?.let { logo(it) }
         if (logo != null) {
@@ -114,12 +161,41 @@ class SportsPosterRenderer(
             val p = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = CREST_BG }
             c.drawCircle(cx, cy, size / 2, p)
             val label = who?.team?.abbreviation?.ifBlank { null } ?: who?.team?.name?.take(3).orEmpty()
-            val t = text(36f, Typeface.BOLD, Color.WHITE)
-            c.drawText(label, cx - t.measureText(label) / 2, cy + 13f, t)
+            val t = text(size * 0.28f, Typeface.BOLD, Color.WHITE)
+            c.drawText(label, cx - t.measureText(label) / 2, cy + (size * 0.10f), t)
         }
     }
 
-    /** A crest from the disk cache, downloaded once. */
+    /** Crops transparent border pixels around the logo so it fills its bounding box. */
+    private fun trimTransparent(src: Bitmap): Bitmap {
+        val w = src.width
+        val h = src.height
+        var minX = w
+        var minY = h
+        var maxX = -1
+        var maxY = -1
+
+        val pixels = IntArray(w * h)
+        src.getPixels(pixels, 0, w, 0, 0, w, h)
+        for (y in 0 until h) {
+            val row = y * w
+            for (x in 0 until w) {
+                if (((pixels[row + x] ushr 24) and 0xff) > 10) {
+                    if (x < minX) minX = x
+                    if (x > maxX) maxX = x
+                    if (y < minY) minY = y
+                    if (y > maxY) maxY = y
+                }
+            }
+        }
+        if (minX > maxX || minY > maxY) return src
+        val tw = maxX - minX + 1
+        val th = maxY - minY + 1
+        if (tw == w && th == h) return src
+        return Bitmap.createBitmap(src, minX, minY, tw, th)
+    }
+
+    /** A crest from the disk cache, downloaded once and auto-trimmed of transparent borders. */
     private fun logo(url: String): Bitmap? {
         val file = File(logoDir, hash(url))
         if (!file.exists() || file.length() == 0L) {
@@ -131,7 +207,10 @@ class SportsPosterRenderer(
                 }
             }.onFailure { return null }
         }
-        return BitmapFactory.decodeFile(file.path)
+        val raw = BitmapFactory.decodeFile(file.path) ?: return null
+        val trimmed = trimTransparent(raw)
+        if (trimmed !== raw) raw.recycle()
+        return trimmed
     }
 
     private fun text(size: Float, style: Int, color: Int) = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -150,6 +229,8 @@ class SportsPosterRenderer(
         private const val SHA = "SHA-256"
         const val W = 640
         const val H = 360
+        private const val CREST_SIZE = 185f
+        private const val MAX_TEAM_NAME_W = 190f
         private val MUTED = Color.rgb(0xD5, 0xDC, 0xE6)
         private val ACCENT = Color.rgb(0x5E, 0xE6, 0xCC)
         private val LIVE = Color.rgb(0xFF, 0x5A, 0x5C)

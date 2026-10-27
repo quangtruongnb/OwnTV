@@ -169,7 +169,7 @@ class SportsChannelPublisher(
         private const val SEPARATOR = " · "
         private const val VS = "vs"
         /** Bump when the poster's design changes, so every card is drawn again. */
-        private const val POSTER_VERSION = 2
+        private const val POSTER_VERSION = 3
         private const val LOGO_PX = 160
     }
 }
