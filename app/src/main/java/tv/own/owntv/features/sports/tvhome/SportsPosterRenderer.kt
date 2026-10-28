@@ -94,16 +94,16 @@ class SportsPosterRenderer(
             // Centre column:
             if (m.isLive) {
                 // Large live score in centre
-                val mid = fit(centre, 62f, 44f, 200f, Color.WHITE)
+                val mid = fit(centre, 68f, 48f, 200f, Color.WHITE)
                 c.drawText(centre, (W - mid.measureText(centre)) / 2f, 166f, mid)
                 // Match status below score
-                val foot = fit(footer, 36f, 24f, 200f, LIVE)
+                val foot = fit(footer, 40f, 26f, 200f, LIVE)
                 c.drawText(footer, (W - foot.measureText(footer)) / 2f, 235f, foot)
             } else {
-                // "vs" in centre
-                val mid = text(58f, Typeface.BOLD, Color.WHITE)
-                c.drawText(centre, (W - mid.measureText(centre)) / 2f, 155f, mid)
-                // Kick-off time and date stacked
+                // "vs" placed above kickoff time
+                val mid = text(42f, Typeface.BOLD, Color.WHITE)
+                c.drawText(centre, (W - mid.measureText(centre)) / 2f, 126f, mid)
+                // Kick-off time (enlarged to 52px) and date (enlarged to 30px, white for contrast)
                 if (m.startMs > 0L) {
                     val timeStr = DateUtils.formatDateTime(context, m.startMs, DateUtils.FORMAT_SHOW_TIME)
                     val dateStr = DateUtils.formatDateTime(
@@ -111,13 +111,13 @@ class SportsPosterRenderer(
                         DateUtils.FORMAT_SHOW_WEEKDAY or DateUtils.FORMAT_ABBREV_WEEKDAY or
                             DateUtils.FORMAT_SHOW_DATE or DateUtils.FORMAT_ABBREV_MONTH or DateUtils.FORMAT_NO_YEAR,
                     )
-                    val timePaint = fit(timeStr, 36f, 26f, 200f, ACCENT)
-                    c.drawText(timeStr, (W - timePaint.measureText(timeStr)) / 2f, 215f, timePaint)
-                    val datePaint = fit(dateStr, 24f, 18f, 200f, MUTED)
-                    c.drawText(dateStr, (W - datePaint.measureText(dateStr)) / 2f, 255f, datePaint)
+                    val timePaint = fit(timeStr, 52f, 36f, 200f, ACCENT)
+                    c.drawText(timeStr, (W - timePaint.measureText(timeStr)) / 2f, 192f, timePaint)
+                    val datePaint = fit(dateStr, 30f, 20f, 200f, Color.WHITE)
+                    c.drawText(dateStr, (W - datePaint.measureText(dateStr)) / 2f, 248f, datePaint)
                 } else if (footer.isNotBlank()) {
-                    val foot = fit(footer, 32f, 22f, 200f, ACCENT)
-                    c.drawText(footer, (W - foot.measureText(footer)) / 2f, 225f, foot)
+                    val foot = fit(footer, 42f, 26f, 200f, ACCENT)
+                    c.drawText(footer, (W - foot.measureText(footer)) / 2f, 220f, foot)
                 }
             }
         } else {
